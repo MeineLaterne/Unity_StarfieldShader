@@ -57,7 +57,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 // Distanz von unserem Pixel zum origin
                 float d = length(uv);
                 // Glow
-                float m = 0.1 / d;
+                float m = 0.025 / d;
 
                 // Kreuzförmige Strahlen. Können über den Flare Parameter gesteuert werden
                 float rays = max(0, 1 - (abs(uv.x * uv.y * 1024)));
@@ -136,7 +136,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 uv.x *= aspect;
                 uv = TRANSFORM_TEX(uv, _MainTex);
                 float inc = 1. / NUM_LAYERS;
-                float depth = 1;
+                float depth = 1.;
                 //float t = _Time.y * _ScrollSpeed;
                 for (float l = 0.; l < 1.; l += inc) {
                     //float depth = frac(l + t);
