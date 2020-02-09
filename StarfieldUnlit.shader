@@ -127,11 +127,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 float aspect = _ScreenParams.x / _ScreenParams.y;
                 fixed4 col = 0;
                 uv *= 4;
-                // so verschiebt man das Ganze..allerdings wissen wir hier noch nicht
-                // welche Größe der Stern hat, zu dem der Pixel hier gehört
-                // also verschieben wir erstmal alle Sterne gleich schnell
-                // evtl. können wir kleinere Sterne später noch irgendwie verlangsamen sobald wir ihre Größe kennen?
-                //uv.y += _Time.y * _ScrollSpeed;
+                
                 // Verzerrung durch ungleiche Seitenlängen korrigieren
                 uv.x *= aspect;
                 uv = TRANSFORM_TEX(uv, _MainTex);
