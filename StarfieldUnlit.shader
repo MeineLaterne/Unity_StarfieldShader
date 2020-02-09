@@ -5,7 +5,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
-        _Color ("Tint", Color) = (0, 0, 0, 1)
+        _Tint ("Tint", Color) = (0, 0, 0, 1)
         _GlowRate ("Glow Rate", Range(1., 10.)) = 1.
         _Flare ("Flare", Range(0., 1.)) = 1.
         _ScrollSpeed ("ScrollSpeed", Range(0.01, 1.)) = 0.5
@@ -24,6 +24,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
             // #pragma multi_compile_fog
 
             #include "UnityCG.cginc"
+            #define NUM_LAYERS 6.
 
             struct appdata
             {
@@ -43,23 +44,73 @@ Shader "Custom/Unlit/StarfieldUnlit"
             float _Flare;
             float _GlowRate;
             float _ScrollSpeed;
-
-            float star(float2 uv, float flare) {
-                float d = length(uv);
-                float m = 0.025 / d;
-
-                float rays = max(0, 1 - (abs(uv.x * uv.y * 1024)));
-                m += rays * flare;
-
-                m *= smoothstep(.5, .2, d);
-                return m;
-            }
+            fixed4 _Tint;
 
             // generiert sowas wie eine Pseudozufallszahl
             float hash21(float2 p) {
                 p = frac(p * float2(482.468, 176.89));
-                p += dot(p, p+45.89);
+                p += dot(p, p + 45.89);
                 return frac(p.x * p.y);
+            }
+
+            float star(float2 uv, float flare) {
+                // Distanz von unserem Pixel zum origin
+                float d = length(uv);
+                // Glow
+                float m = 0.1 / d;
+
+                // Kreuzförmige Strahlen. Können über den Flare Parameter gesteuert werden
+                float rays = max(0, 1 - (abs(uv.x * uv.y * 1024)));
+                m += rays * flare;
+                // hier faden wir den Glow wieder aus, damit wir keine harten Kanten zwischen den Zellen sehen 
+                m *= smoothstep(.5, .2, d);
+                return m;
+            }
+
+            fixed4 starLayer(float2 uv, float depth) {
+                fixed4 col = 0;
+                // grid uvs berechnen
+                // frac gibt uns nur die Dezimalbruchstellen
+                // also hat jede Zelle nun uvs zwischen 0 und 1
+                // der Origin der Zellen ist die linke untere Ecke
+                // um ihn in die Mitte zu setzen subtrahieren wir 0.5 
+                float2 gv = frac(uv) - 0.5;
+                // die cellId ist eindeutig für jede Zelle
+                float2 cellId = floor(uv);
+
+                // wir müssen die Farbwerte unserer Nachbarzellen mit berücksichtigen
+                // deshalb iterieren wir kurz über unsere Nachbarn und schauen, was die so beizutragen haben
+                for (int y = -1; y <= 1; y++) {
+                    for (int x = -1; x <= 1; x++) {
+                        // offset von unserer id (0, 0) zu den Nachbarn
+                        float2 nId = float2(x, y);
+                        // der offset der Sterne in ihren Zellen
+                        float ofst = hash21(cellId + nId); // random zwischen 0 und 1
+
+                        // Größe der Sterne
+                        float size = 1. / depth;// max(0.1, frac(ofst * 486.98));
+
+                        // wenn wir hier nun die grid uvs übergeben
+                        // erhalten wir für jede Box einen Stern
+                        // mit dem Vector, den wir zu gv addieren verschieben
+                        // wir den Stern von seinem Ursprung (der Mitte der Zelle)
+                        // allerdings können wir nicht die selbe Zahl für x und y verwenden,
+                        // da die Sterne sonst diagonal angeordnet würden.
+                        // hier muss der nId offset wieder rausgerechnet werden
+                        // damit wir die korrekten uvs an die star funktion übergeben
+                        float2 star_uvs = gv - nId - float2(ofst, frac(ofst * 32.)) + 0.5;
+
+                        float s = star(star_uvs, smoothstep(0.9, 1.0, size) * _Flare); // flare abhängig von der Größe
+                        // jeder Stern kriegt seine eigene Farbe
+                        float4 sc = sin(_Tint * frac(ofst * 3845.85) * 6.2831) * 0.5 + 0.5;
+                        // ein bisschen Grün rausfiltern
+                        sc *= float4(.4, .26, .4, .4);
+                        s *= sin(_Time.y * _GlowRate + ofst * 6.2831) * .2 + 1.;
+                        col += s * size * sc;
+                    }
+                }
+
+                return col;
             }
 
             v2f vert (appdata v)
@@ -71,58 +122,33 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
-            {
+            fixed4 frag(v2f i) : SV_Target {
                 float2 uv = i.screenPosition.xy / i.screenPosition.w;
                 float aspect = _ScreenParams.x / _ScreenParams.y;
                 fixed4 col = 0;
                 uv *= 4;
-                uv.y += _Time.y * _ScrollSpeed;
+                // so verschiebt man das Ganze..allerdings wissen wir hier noch nicht
+                // welche Größe der Stern hat, zu dem der Pixel hier gehört
+                // also verschieben wir erstmal alle Sterne gleich schnell
+                // evtl. können wir kleinere Sterne später noch irgendwie verlangsamen sobald wir ihre Größe kennen?
+                //uv.y += _Time.y * _ScrollSpeed;
                 // Verzerrung durch ungleiche Seitenlängen korrigieren
                 uv.x *= aspect;
                 uv = TRANSFORM_TEX(uv, _MainTex);
-
-                // grid uvs berechnen
-                // frac gibt uns nur die Dezimalbruchstellen
-                // also hat jede Zelle nun uvs zwischen 0 und 1
-                // der Origin der Zellen ist die linke untere Ecke
-                // um ihn in die Mitte zu setzen subtrahieren wir 0.5 
-                float2 gv = frac(uv)-0.5;
-                // die cellId ist eindeutig für jede Zelle
-                float2 cellId = floor(uv);
-
-                // wir müssen die Farbwerte unserer Nachbarzellen mit berücksichtigen
-                // deshalb iterieren wir kurz über unsere Nachbarn und schauen, was die so beizutragen haben
-                for (int y = -1; y <= 1; y++) {
-                    for (int x = -1; x <= 1; x++) {
-                        // offset von unserer id (0, 0) zu den Nachbarn
-                        float2 nId = float2(x, y);
-                        // der offset der Sterne in ihren Zellen
-                        float ofst = hash21(cellId+nId); // random zwischen 0 und 1
-                        
-                        // Größe der Sterne
-                        float size = frac(ofst * 486.98);
-                        
-                        // wenn wir hier nun die grid uvs übergeben
-                        // erhalten wir für jede Box einen Stern
-                        // mit dem Vector, den wir zu gv addieren verschieben
-                        // wir den Stern von seinem Ursprung (der Mitte der Zelle)
-                        // allerdings können wir nicht die selbe Zahl für x und y verwenden,
-                        // da die Sterne sonst diagonal angeordnet würden.
-                        // hier muss der nId offset wieder rausgerechnet werden
-                        // damit wir die korrekten uvs an die star funktion übergeben
-                        float2 star_uvs = gv - nId - float2(ofst, frac(ofst * 32.)) + 0.5;
-                        
-                        //star_uvs.y = (star_uvs.y + _Time.y * .2) % 4.;
-                        float s = star(star_uvs, smoothstep(0.9, 1.0, size) * _Flare); // flare abhängig von der Größe
-                        
-                        s *= sin(_Time.y*_GlowRate + ofst*6.28) * .2 + 1.;
-                        col += s * size;
-                    }
+                float inc = 1. / NUM_LAYERS;
+                float depth = 1;
+                //float t = _Time.y * _ScrollSpeed;
+                for (float l = 0.; l < 1.; l += inc) {
+                    //float depth = frac(l + t);
+                    float speed = _ScrollSpeed / depth;
+                    uv.y += _Time.y * speed;
+                    
+                    col += starLayer(uv, depth);
+                    depth -= inc;
                 }
                 
-                
                 // grid visualisieren
+                //float2 gv = frac(uv) - 0.5;
                 //if (gv.x > 0.49 || gv.y > 0.49) col.r = 1.0;
 
                 return col;
