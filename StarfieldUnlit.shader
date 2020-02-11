@@ -1,5 +1,6 @@
 ﻿// https://www.ronja-tutorials.com/2019/01/20/screenspace-texture.html
 // https://youtu.be/rvDo9LvfoVE
+// https://www.shadertoy.com/view/tlyGW3
 Shader "Custom/Unlit/StarfieldUnlit"
 {
     Properties
@@ -127,11 +128,7 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 float aspect = _ScreenParams.x / _ScreenParams.y;
                 fixed4 col = 0;
                 uv *= 4;
-                // so verschiebt man das Ganze..allerdings wissen wir hier noch nicht
-                // welche Größe der Stern hat, zu dem der Pixel hier gehört
-                // also verschieben wir erstmal alle Sterne gleich schnell
-                // evtl. können wir kleinere Sterne später noch irgendwie verlangsamen sobald wir ihre Größe kennen?
-                //uv.y += _Time.y * _ScrollSpeed;
+                
                 // Verzerrung durch ungleiche Seitenlängen korrigieren
                 uv.x *= aspect;
                 uv = TRANSFORM_TEX(uv, _MainTex);
@@ -139,11 +136,12 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 float depth = 1.;
                 //float t = _Time.y * _ScrollSpeed;
                 for (float l = 0.; l < 1.; l += inc) {
-                    //float depth = frac(l + t);
+                    // Geschwindigkeit ist abhängig von der depth des layers
+                    // so bewegen sich weiter entfernte Sterne langsamer
                     float speed = _ScrollSpeed / depth;
-                    uv.y += _Time.y * speed;
+                    uv.y += _Time.y * 0.1 * speed;
                     
-                    col += starLayer(uv, depth);
+                    col += starLayer(uv + l * 235.94, depth);
                     depth -= inc;
                 }
                 
@@ -151,9 +149,12 @@ Shader "Custom/Unlit/StarfieldUnlit"
                 //float2 gv = frac(uv) - 0.5;
                 //if (gv.x > 0.49 || gv.y > 0.49) col.r = 1.0;
 
+                
                 return col;
             }
             ENDCG
         }
+
+        
     }
 }
